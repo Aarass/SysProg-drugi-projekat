@@ -12,10 +12,8 @@ namespace ConsoleApp1
     {
         static void Main(string[] args)
         {
-            //int worker_threads, completion_ports_threads;
-            //ThreadPool.GetAvailableThreads(out worker_threads, out completion_ports_threads);
             HttpListener listener = new HttpListener();
-            listener.Prefixes.Add("http://localhost:8080/");
+            listener.Prefixes.Add("http://localhost:5050/");
             listener.Start();
 
             while (listener.IsListening)
@@ -27,36 +25,29 @@ namespace ConsoleApp1
                     HttpListenerRequest Request = context.Request;
                     HttpListenerResponse Response = context.Response;
 
+                    if (Request.HttpMethod != "GET")
+                    {
+                        Console.WriteLine("Unsupported request method");
+                        SetErrorResponse(context, "Unsupported request method");
+                        return;
+                    }
+
                     string uri = context.Request.RawUrl;
                     if (uri == "/favicon.ico") return;
 
                     string path = $"..\\..\\assets{uri}";
                     string newPath = $"{path.Substring(0, path.Length - 3)}png";
 
-                    Console.WriteLine(path);
-                    Console.WriteLine(newPath);
-
                     bool alreadyConverted = File.Exists(newPath);
                     if (!alreadyConverted)
                     {
-                        Console.WriteLine("Converting image...");
-                        Image jpgImage;
                         try
                         {
-                            jpgImage = Image.FromFile(path);
+                            ConvertJpgImageToPng(path, newPath);
                         }
-                        catch (Exception)
+                        catch (Exception ex)
                         {
-                            SetErrorResponse(context, "Couldn't load jpg image");
-                            return;
-                        }
-
-                        try
-                        {
-                            jpgImage.Save(newPath, ImageFormat.Png);
-                        }
-                        catch (Exception)
-                        {
+                            Console.WriteLine($"Converting image failed:\n {ex}");
                             SetErrorResponse(context, "Couldn't convert image");
                             return;
                         }
@@ -69,27 +60,55 @@ namespace ConsoleApp1
                     }
                     catch (Exception)
                     {
-                        SetErrorResponse(context, "Couldn't load png image");
+                        Console.WriteLine("Couldn't load converted image");
+                        SetErrorResponse(context, "Internal error");
                         return;
                     }
 
                     try
                     {
-                        Response.ContentType = "image/png";
-                        Response.ContentLength64 = pngImage.Length;
                         Response.OutputStream.Write(pngImage, 0, pngImage.Length);
                     }
                     catch (Exception e)
                     {
-                        Console.WriteLine($"Couldn't make response: {e.ToString()}");
+                        Console.WriteLine($"Couldn't write image to response:\n {e.ToString()}");
                     }
+
+                    Response.ContentType = "image/png";
+                    Response.ContentLength64 = pngImage.Length;
+
+                    Console.WriteLine("Image sent");
                 });
             }
         }
 
+        public static void ConvertJpgImageToPng(string path, string newPath)
+        {
+            Console.WriteLine("Converting image...");
+
+            Image jpgImage;
+            try
+            {
+                jpgImage = Image.FromFile(path);
+            }
+            catch (Exception e)
+            {
+                throw new Exception($"Couldn't load jpg image:\n {e.ToString()}");
+            }
+
+            try
+            {
+                jpgImage.Save(newPath, ImageFormat.Png);
+            }
+            catch (Exception e)
+            {
+                throw new Exception($"Couldn't convert image:\n {e.ToString()}");
+            }
+
+            Console.WriteLine("Converting done");
+        }
         public static void SetErrorResponse(HttpListenerContext context, string error)
         {
-            Console.WriteLine(error);
             HttpListenerResponse Response = context.Response;
 
             byte[] html = Encoding.ASCII.GetBytes($"<p>{error}</p>");

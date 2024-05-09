@@ -17,7 +17,7 @@ namespace ConsoleApp1
             _mListener = new HttpListener();
             _mListener.Prefixes.Add($"http://localhost:{port}/");
 
-            _cache = new ImageCache(5, new TimeSpan(0, 0, 0, 10));
+            _cache = new ImageCache(3, new TimeSpan(0, 1, 0, 10));
         }
 
         public void Run()
@@ -62,7 +62,8 @@ namespace ConsoleApp1
                         return;
                     }
 
-                    if (_cache.TryGetImage(imageName, out var pngImage))
+                    MemoryStream pngImage;
+                    if (_cache.TryGetImage(imageName, out pngImage))
                     {
                         Console.WriteLine("Cache hit");
                     }
@@ -109,13 +110,20 @@ namespace ConsoleApp1
 
         private void SendErrorResponse(HttpListenerResponse response, string error)
         {
-            byte[] html = Encoding.ASCII.GetBytes($"<p>{error}</p>");
+            try
+            {
+                byte[] html = Encoding.ASCII.GetBytes($"<p>{error}</p>");
 
-            response.ContentType = "text/html";
-            response.ContentLength64 = html.Length;
-            response.StatusCode = 400;
-            response.OutputStream.Write(html, 0, html.Length);
-            response.Close();
+                response.ContentType = "text/html";
+                response.ContentLength64 = html.Length;
+                response.StatusCode = 400;
+                response.OutputStream.Write(html, 0, html.Length);
+                response.Close();
+            }
+            catch
+            {
+                // ignored
+            }
         }
 
         private Image LoadImage(string imageName)

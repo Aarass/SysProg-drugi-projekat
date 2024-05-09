@@ -7,7 +7,7 @@ namespace ConsoleApp1
 {
     internal class ImageCache
     {
-        private readonly ConcurrentDictionary<string, LinkedListNode<ImageData>> _map;
+        private readonly Dictionary<string, LinkedListNode<ImageData>> _map;
         private readonly LinkedList<ImageData> _list;
         private readonly int _capacity;
         private readonly TimeSpan _ttl;
@@ -15,7 +15,7 @@ namespace ConsoleApp1
 
         public ImageCache(int capacity, TimeSpan ttl)
         {
-            _map = new ConcurrentDictionary<string, LinkedListNode<ImageData>>();
+            _map = new Dictionary<string, LinkedListNode<ImageData>>();
             _list = new LinkedList<ImageData>();
             _lock = new object();
 
@@ -34,44 +34,44 @@ namespace ConsoleApp1
 
             lock (_lock)
             {
-                if (_list.Count > _capacity)
+                if (_list.Count >= _capacity)
                 {
-                    _map.TryRemove(_list.Last.Value.ImageName, out _);
+                    _map.Remove(_list.Last.Value.ImageName);
                     _list.RemoveLast();
                 }
 
+                if (_map.TryGetValue(imageName, out var node))
+                {
+                    _map.Remove(imageName);
+                    _list.Remove(node);
+                }
+
                 var newNode = _list.AddFirst(newData);
-                _map.AddOrUpdate(imageName, newNode,
-                    (id, node) =>
-                    {
-                        _list.Remove(node);
-                        return newNode;
-                    }
-                );
+                _map.Add(imageName, newNode);
             }
         }
 
         public bool TryGetImage(string imageName, out MemoryStream data)
         {
-            if (!_map.TryGetValue(imageName, out var node))
+            LinkedListNode<ImageData> node;
+            lock (_lock)
             {
-                data = null;
-                return false;
-            }
-            ImageData imageData = node.Value;
-
-            if ((DateTime.Now - imageData.CreationTime) > _ttl)
-            {
-                lock (_lock)
+                if (!_map.TryGetValue(imageName, out node))
                 {
-                    _map.TryRemove(imageName, out _);
-                    _list.Remove(imageData);
+                    data = null;
+                    return false;
                 }
-                data = null;
-                return false;
+
+                if ((DateTime.Now - node.Value.CreationTime) > _ttl)
+                {
+                    _map.Remove(imageName);
+                    _list.Remove(node);
+                    data = null;
+                    return false;
+                }
             }
 
-            data = imageData.ActualData;
+            data = node.Value.ActualData;
             return true;
         }
     }

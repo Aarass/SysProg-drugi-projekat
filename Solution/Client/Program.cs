@@ -41,11 +41,13 @@ namespace Client
 
             StartServer();
 
+            string choosenImage = images[4];
+
             ChangeMode("cache_off");
             ChangeMode("cache_clear");
             ChangeMode("threads_off");
             events = new List<ManualResetEvent>();
-            RequestSameImage("camera.jpg", 10, allRecords.noOptimizations);
+            RequestSameImage(choosenImage, 10, allRecords.noOptimizations);
 
             Console.WriteLine("No threads, no cache");
             foreach (var e in events)
@@ -57,7 +59,7 @@ namespace Client
 
             ChangeMode("threads_on");
             events = new List<ManualResetEvent>();
-            RequestSameImage("camera.jpg", 10, allRecords.threadsOn);
+            RequestSameImage(choosenImage, 10, allRecords.threadsOn);
 
             Console.WriteLine("Threads, no cache");
             foreach (var e in events)
@@ -70,7 +72,7 @@ namespace Client
             ChangeMode("cache_on");
             ChangeMode("cache_clear");
             events = new List<ManualResetEvent>();
-            RequestSameImage("camera.jpg", 10, allRecords.cacheOn);
+            RequestSameImage(choosenImage, 10, allRecords.cacheOn);
 
             Console.WriteLine("Threads, Cache");
             foreach (var e in events)
@@ -119,7 +121,8 @@ namespace Client
                 });
                 if (i == 0)
                 {
-                    Thread.Sleep(1000);
+                    e.WaitOne();
+                    //Thread.Sleep(1000);
                 }
             }
         }

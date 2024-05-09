@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
@@ -156,15 +157,17 @@ namespace Client
 
         public static void StartServer()
         {
+            string serverDir = Path.Combine(Directory.GetCurrentDirectory(), @"..\..\..\WebServer\bin\Debug\");
+            string serverPath = Path.Combine(serverDir, "WebServer.exe");
+
             ProcessStartInfo startInfo = new ProcessStartInfo
             {
                 Arguments = "",
-                FileName = @"C:\Users\proko\Documents\sisp\SysProg-prvi-projekat\Solution\WebServer\bin\Debug\ConsoleApp1.exe",
+                FileName = serverPath,
                 CreateNoWindow = true,
                 WindowStyle = ProcessWindowStyle.Normal
             };
-            startInfo.WorkingDirectory =
-                @"C:\Users\proko\Documents\sisp\SysProg-prvi-projekat\Solution\WebServer\bin\Debug\";
+            startInfo.WorkingDirectory = serverDir;
 
             Process.Start(startInfo);
         }

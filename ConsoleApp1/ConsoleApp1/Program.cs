@@ -13,6 +13,7 @@ namespace ConsoleApp1
         static void Main(string[] args)
         {
             WebServer server = new WebServer(8080);
+            server.RunModeChangeListener();
             server.Run();
         }
     }

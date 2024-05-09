@@ -74,6 +74,16 @@ namespace ConsoleApp1
             data = node.Value.ActualData;
             return true;
         }
+
+        public void Clear()
+        {
+            lock (_lock)
+            {
+                _map.Clear();
+                _list.Clear();
+            }
+            Console.WriteLine("Cache cleared");
+        }
     }
 
     internal struct ImageData

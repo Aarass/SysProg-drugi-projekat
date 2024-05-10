@@ -86,10 +86,16 @@ namespace ConsoleApp1
         }
     }
 
-    internal struct ImageData
+    internal struct ImageData: IDisposable
     {
         public string ImageName;
         public MemoryStream ActualData;
         public DateTime CreationTime;
+
+        public void Dispose()
+        {
+            ActualData.Close();
+            ActualData?.Dispose();
+        }
     }
 }

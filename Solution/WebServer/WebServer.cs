@@ -157,6 +157,8 @@ namespace ConsoleApp1
             try
             {
                 response.OutputStream.Write(pngImage.GetBuffer(), 0, (int)pngImage.Length);
+                response.OutputStream.Close();
+
                 response.Close();
             }
             catch (Exception e)

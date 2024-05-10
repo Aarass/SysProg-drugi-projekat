@@ -14,13 +14,13 @@ namespace Client
 {
     internal struct Records
     {
-        public List<TimeSpan> noOptimizations;
-        public List<TimeSpan> threadsOn;
-        public List<TimeSpan> cacheOn;
+        public List<TimeSpan> NoOptimizations;
+        public List<TimeSpan> ThreadsOn;
+        public List<TimeSpan> ThreadsAndCacheOn;
     }
     internal class Program
     {
-        static string[] images =
+        static readonly string[] Images =
         {
             "camera.jpg",
             "church.jpg",
@@ -30,67 +30,41 @@ namespace Client
             "plant.jpg",
         };
 
-        static List<ManualResetEvent> events;
         static void Main(string[] args)
         {
-            Records allRecords = new Records()
-            {
-                noOptimizations = new List<TimeSpan>(),
-                threadsOn = new List<TimeSpan>(),
-                cacheOn = new List<TimeSpan>(),
-            };
-
             StartServer();
 
-            string choosenImage = images[4];
-
-            ChangeMode("cache_off");
-            ChangeMode("cache_clear");
-            ChangeMode("threads_off");
-            events = new List<ManualResetEvent>();
-            RequestSameImage(choosenImage, 10, allRecords.noOptimizations);
-
-            Console.WriteLine("No threads, no cache");
-            foreach (var e in events)
+            Records allRecords = new Records()
             {
-                e.WaitOne();
-            }
-            PrintList(allRecords.noOptimizations);
-            PrintStatistics(allRecords.noOptimizations);
+                NoOptimizations = new List<TimeSpan>(),
+                ThreadsOn = new List<TimeSpan>(),
+                ThreadsAndCacheOn = new List<TimeSpan>(),
+            };
+
+            var chosenImage = Images[4];
+
+            ChangeMode("cache_off", "cache_clear", "threads_off");
+            GetSameImage(chosenImage, 10, allRecords.NoOptimizations);
+            PrintList(allRecords.NoOptimizations);
+            PrintStatistics(allRecords.NoOptimizations);
 
             ChangeMode("threads_on");
-            events = new List<ManualResetEvent>();
-            RequestSameImage(choosenImage, 10, allRecords.threadsOn);
+            GetSameImage(chosenImage, 10, allRecords.ThreadsOn);
+            PrintList(allRecords.ThreadsOn);
+            PrintStatistics(allRecords.ThreadsOn);
 
-            Console.WriteLine("Threads, no cache");
-            foreach (var e in events)
-            {
-                e.WaitOne();
-            }
-            PrintList(allRecords.threadsOn);
-            PrintStatistics(allRecords.threadsOn);
-
-            ChangeMode("cache_on");
-            ChangeMode("cache_clear");
-            events = new List<ManualResetEvent>();
-            RequestSameImage(choosenImage, 10, allRecords.cacheOn);
-
-            Console.WriteLine("Threads, Cache");
-            foreach (var e in events)
-            {
-                e.WaitOne();
-            }
-            PrintList(allRecords.cacheOn);
-            PrintStatistics(allRecords.cacheOn);
-
+            ChangeMode("cache_on", "cache_clear");
+            GetSameImage(chosenImage, 10, allRecords.ThreadsAndCacheOn);
+            PrintList(allRecords.ThreadsAndCacheOn);
+            PrintStatistics(allRecords.ThreadsAndCacheOn);
 
             Console.ReadKey();
         }
 
         static void PrintStatistics(List<TimeSpan> records)
         {
-            TimeSpan avg = TimeSpan.FromSeconds(records.Select(s => s.TotalSeconds).Average());
-            TimeSpan max = TimeSpan.FromSeconds(records.Select(s => s.TotalSeconds).Max());
+            var avg = TimeSpan.FromSeconds(records.Select(s => s.TotalSeconds).Average());
+            var max = TimeSpan.FromSeconds(records.Select(s => s.TotalSeconds).Max());
             Console.WriteLine($"Average: {avg}, max: {max}");
             Console.WriteLine("----------------------------------------------\n\n");
         }
@@ -104,54 +78,77 @@ namespace Client
             Console.WriteLine("----------------------------------------------");
         }
         private static readonly object Lock = new object();
-        public static void RequestSameImage(string imageName, int n, List<TimeSpan> records)
+        public static void GetSameImage(string imageName, int n, List<TimeSpan> records)
         {
+            Console.WriteLine("Getting images...");
+            List<ManualResetEvent> events = new List<ManualResetEvent>();
+
             for (int i = 0; i < n; i++)
             {
-                var e = new ManualResetEvent(false);
-                events.Add(e);
+                var resetEvent = new ManualResetEvent(false);
+                events.Add(resetEvent);
                 ThreadPool.QueueUserWorkItem(state =>
                 {
                     RequestImage(imageName, out var elapsedTime);
 
                     lock (Lock)
                     {
-                        e.Set();
+                        resetEvent.Set();
                         records.Add(elapsedTime);
                     }
                 });
                 if (i == 0)
                 {
-                    e.WaitOne();
-                    //Thread.Sleep(1000);
+                    resetEvent.WaitOne();
                 }
+            }
+
+            foreach (var resetEvent in events)
+            {
+                resetEvent.WaitOne();
             }
         }
 
         public static bool RequestImage(string imageName, out TimeSpan elapsedTime)
         {
-            Stopwatch sw = new Stopwatch();
+            var client = new HttpClient();
+            var sw = new Stopwatch();
 
             sw.Start();
-            var request = new HttpClient().GetAsync($"http://localhost:8080/{imageName}");
+            var request = client.GetAsync($"http://localhost:8080/{imageName}");
             request.Wait();
             sw.Stop();
 
+            client.Dispose();
+
+            var response = request.Result;
+            response.Dispose();
+
+            var responseContent = response.ToString();
+            var responseStatus = response.StatusCode;
+            response.Dispose();
+
             elapsedTime = sw.Elapsed;
-            if (request.Result.StatusCode != HttpStatusCode.OK)
+            if (responseStatus!= HttpStatusCode.OK)
             {
-                Console.WriteLine($"Request failed: {request.Result}");
+                Console.WriteLine($"Request failed: {responseContent}");
                 return false;
             }
             return true;
         }
-        public static void ChangeMode(string command)
+        public static void ChangeMode(params string[] commands)
         {
-            var request = new HttpClient().GetAsync($"http://localhost:8081/{command}");
-            request.Wait();
-            if (request.Result.StatusCode != HttpStatusCode.OK)
+            foreach (var command in commands)
             {
-                throw new Exception(request.Result.ToString());
+                var request = new HttpClient().GetAsync($"http://localhost:8081/{command}");
+                request.Wait();
+
+                if (request.Result.StatusCode != HttpStatusCode.OK)
+                {
+                    throw new Exception(request.Result.ToString());
+                }
+
+                Console.WriteLine($"Command: {command}");
             }
         }
 

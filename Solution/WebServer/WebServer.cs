@@ -122,6 +122,9 @@ namespace ConsoleApp1
                 return;
             }
 
+            Console.Write("Cache data before request: ");
+            this._cache.Print();
+
             MemoryStream pngImage;
             if (_shouldUseCache && _cache.TryGetImage(imageName, out pngImage))
             {
@@ -151,6 +154,9 @@ namespace ConsoleApp1
                     _cache.AddImage(imageName, pngImage);
                 }
             }
+
+            Console.Write("Cache data after response: ");
+            this._cache.Print();
 
             response.ContentType = "image/png";
             response.ContentLength64 = pngImage.Length;

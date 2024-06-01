@@ -2,6 +2,7 @@
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
+using System.Text;
 
 namespace ConsoleApp1
 {
@@ -75,6 +76,18 @@ namespace ConsoleApp1
             return true;
         }
 
+        public void Print()
+        {
+            StringBuilder s = new StringBuilder();
+            s.Append("[");
+            foreach (var image in _list)
+            {
+                s.Append(image.ImageName);
+                s.Append(" ");
+            }
+            s.Append("]");
+            Console.WriteLine(s);
+        }
         public void Clear()
         {
             lock (_lock)

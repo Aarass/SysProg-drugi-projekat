@@ -1,29 +1,50 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
-using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
 
 namespace ConsoleApp1
 {
     internal class ImageService
     {
-        public static MemoryStream ConvertImageToPng(Image image)
+        public static Task<Image> LoadImageAsync(string imageName)
         {
-            MemoryStream buffer = new MemoryStream();
-            try
+            return Task.Run(() =>
             {
-                image.Save(buffer, ImageFormat.Png);
-            }
-            catch
-            {
-                return null;
-            }
+                string imagePath = $"..\\..\\assets\\{imageName}.jpg";
 
-            return buffer;
+                Image image;
+                try
+                {
+                    image = Image.FromFile(imagePath);
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine($"Couldn't load jpg image:\n {e}");
+                    return null;
+                }
+
+                return image;
+            });
+        }
+        public static Task<byte[]> ConvertImageToPngAsync(Image image)
+        {
+            return Task.Run(() =>
+            {
+                using (MemoryStream buffer = new MemoryStream())
+                {
+                    try
+                    {
+                        image.Save(buffer, ImageFormat.Png);
+                        return buffer.ToArray();
+                    }
+                    catch
+                    {
+                        return null;
+                    }
+                }
+            });
         }
     }
 }

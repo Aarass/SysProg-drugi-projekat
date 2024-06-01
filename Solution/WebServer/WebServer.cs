@@ -1,48 +1,48 @@
 ﻿using System;
 using System.Drawing;
-using System.Drawing.Imaging;
 using System.IO;
 using System.Net;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace ConsoleApp1
 {
     internal class WebServer
     {
-        private readonly HttpListener _Listener;
-        private readonly HttpListener _ModeChangeListener;
+        private readonly HttpListener _listener;
+        private readonly HttpListener _configListener;
         private readonly ImageCache _cache;
         private bool _shouldUseCache = true;
-        private bool _shouldUseThreads = true;
+        private bool _shouldRunConcurrently = true;
         public WebServer(int port)
         {
-            _Listener = new HttpListener();
-            _Listener.Prefixes.Add($"http://localhost:{port}/");
+            _listener = new HttpListener();
+            _listener.Prefixes.Add($"http://localhost:{port}/");
 
-            _ModeChangeListener = new HttpListener();
-            _ModeChangeListener.Prefixes.Add($"http://localhost:{port + 1}/");
+            _configListener = new HttpListener();
+            _configListener.Prefixes.Add($"http://localhost:{port + 1}/");
 
             _cache = new ImageCache(3, new TimeSpan(0, 1, 0, 10));
         }
 
-        public void RunModeChangeListener()
+        public void RunConfigListener()
         {
-            _ModeChangeListener.Start();
-            ThreadPool.QueueUserWorkItem(sate =>
+            _configListener.Start();
+            new Thread(() =>
             {
-                while (_ModeChangeListener.IsListening)
+                while (_configListener.IsListening)
                 {
-                    var context = _ModeChangeListener.GetContext();
+                    var context = _configListener.GetContext();
                     switch (context.Request.RawUrl)
                     {
-                        case "/threads_off":
-                            Console.WriteLine("Will not be using threads");
-                            _shouldUseThreads = false;
+                        case "/concurrency_off":
+                            Console.WriteLine("Will be processing requests synchronously");
+                            _shouldRunConcurrently = false;
                             break;
-                        case "/threads_on":
-                            Console.WriteLine("Will be using threads");
-                            _shouldUseThreads = true;
+                        case "/concurrency_on":
+                            Console.WriteLine("Will be processing requests concurrently");
+                            _shouldRunConcurrently = true;
                             break;
                         case "/cache_off":
                             Console.WriteLine("Will not be using cache");
@@ -53,6 +53,7 @@ namespace ConsoleApp1
                             _shouldUseCache = true;
                             break;
                         case "/cache_clear":
+                            Console.WriteLine("Cache cleared");
                             _cache.Clear();
                             break;
                         default:
@@ -64,30 +65,30 @@ namespace ConsoleApp1
                     context.Response.StatusCode = 200;
                     context.Response.Close();
                 }
-            });
+            }).Start();
         }
         public void Run()
         {
-            _Listener.Start();
-            while (_Listener.IsListening)
+            _listener.Start();
+            while (_listener.IsListening)
             {
-                HttpListenerContext context = _Listener.GetContext();
+                var context = _listener.GetContext();
 
-                if (_shouldUseThreads)
+                if (_shouldRunConcurrently)
                 {
-                    ThreadPool.QueueUserWorkItem(state =>
+                    Task.Run(() =>
                     {
-                        HandleConnection(context);
+                        _ = HandleConnection(context);
                     });
                 }
                 else
                 {
-                    HandleConnection(context);
+                    HandleConnection(context).Wait();
                 }
             }
         }
 
-        private void HandleConnection(HttpListenerContext context)
+        private async Task HandleConnection(HttpListenerContext context)
         {
             var request = context.Request;
             var response = context.Response;
@@ -122,10 +123,10 @@ namespace ConsoleApp1
                 return;
             }
 
-            Console.Write("Cache data before request: ");
-            this._cache.Print();
+            if (_shouldUseCache)
+                this._cache.Print("Cache data before request: ");
 
-            MemoryStream pngImage;
+            byte[] pngImage;
             if (_shouldUseCache && _cache.TryGetImage(imageName, out pngImage))
             {
                 Console.WriteLine("Cache hit");
@@ -133,7 +134,7 @@ namespace ConsoleApp1
             else
             {
                 Console.WriteLine("Cache miss, converting...");
-                Image jpgImage = LoadImage(imageName);
+                Image jpgImage = await ImageService.LoadImageAsync(imageName);
                 if (jpgImage == null)
                 {
                     Console.WriteLine("Couldn't load image");
@@ -141,7 +142,8 @@ namespace ConsoleApp1
                     return;
                 }
 
-                pngImage = ImageService.ConvertImageToPng(jpgImage);
+                pngImage = await ImageService.ConvertImageToPngAsync(jpgImage);
+                jpgImage.Dispose();
                 if (pngImage == null)
                 {
                     Console.WriteLine("Couldn't convert image");
@@ -155,14 +157,16 @@ namespace ConsoleApp1
                 }
             }
 
-            Console.Write("Cache data after response: ");
-            this._cache.Print();
+            if (_shouldUseCache)
+                this._cache.Print("Cache data after response: ");
+
+
 
             response.ContentType = "image/png";
             response.ContentLength64 = pngImage.Length;
             try
             {
-                response.OutputStream.Write(pngImage.GetBuffer(), 0, (int)pngImage.Length);
+                await response.OutputStream.WriteAsync(pngImage, 0, pngImage.Length);
                 response.OutputStream.Close();
 
                 response.Close();
@@ -194,24 +198,6 @@ namespace ConsoleApp1
             {
                 // ignored
             }
-        }
-
-        private Image LoadImage(string imageName)
-        {
-            string imagePath = $"..\\..\\assets\\{imageName}.jpg";
-
-            Image image;
-            try
-            {
-                image = Image.FromFile(imagePath);
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine($"Couldn't load jpg image:\n {e}");
-                return null;
-            }
-
-            return image;
         }
     }
 }

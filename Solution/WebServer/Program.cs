@@ -1,10 +1,5 @@
 ﻿using System;
-using System.Text;
-using System.Drawing;
-using System.Drawing.Imaging;
 using System.IO;
-using System.Net;
-using System.Threading;
 
 namespace ConsoleApp1
 {
@@ -14,7 +9,7 @@ namespace ConsoleApp1
         {
             Console.WriteLine("The current directory is {0}", Directory.GetCurrentDirectory());
             WebServer server = new WebServer(8080);
-            server.RunModeChangeListener();
+            server.RunConfigListener();
             server.Run();
         }
     }

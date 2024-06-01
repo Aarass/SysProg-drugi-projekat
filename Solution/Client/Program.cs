@@ -17,6 +17,7 @@ namespace Client
         public List<TimeSpan> NoOptimizations;
         public List<TimeSpan> ThreadsOn;
         public List<TimeSpan> ThreadsAndCacheOn;
+        public List<TimeSpan> ThreadsAndCacheOnRandomizedRequests;
     }
     internal class Program
     {
@@ -39,16 +40,17 @@ namespace Client
                 NoOptimizations = new List<TimeSpan>(),
                 ThreadsOn = new List<TimeSpan>(),
                 ThreadsAndCacheOn = new List<TimeSpan>(),
+                ThreadsAndCacheOnRandomizedRequests = new List<TimeSpan>(),
             };
 
             var chosenImage = Images[4];
 
-            ChangeMode("cache_off", "cache_clear", "threads_off");
+            ChangeMode("cache_off", "cache_clear", "concurrency_off");
             GetSameImage(chosenImage, 10, allRecords.NoOptimizations);
             PrintList(allRecords.NoOptimizations);
             PrintStatistics(allRecords.NoOptimizations);
 
-            ChangeMode("threads_on");
+            ChangeMode("concurrency_on");
             GetSameImage(chosenImage, 10, allRecords.ThreadsOn);
             PrintList(allRecords.ThreadsOn);
             PrintStatistics(allRecords.ThreadsOn);
@@ -57,6 +59,10 @@ namespace Client
             GetSameImage(chosenImage, 10, allRecords.ThreadsAndCacheOn);
             PrintList(allRecords.ThreadsAndCacheOn);
             PrintStatistics(allRecords.ThreadsAndCacheOn);
+
+            GetRandomImages(10, allRecords.ThreadsAndCacheOnRandomizedRequests);
+            PrintList(allRecords.ThreadsAndCacheOnRandomizedRequests);
+            PrintStatistics(allRecords.ThreadsAndCacheOnRandomizedRequests);
 
             Console.ReadKey();
         }
@@ -109,6 +115,38 @@ namespace Client
             }
         }
 
+        public static void GetRandomImages(int n, List<TimeSpan> records)
+        {
+            Console.WriteLine("Getting images...");
+            List<ManualResetEvent> events = new List<ManualResetEvent>();
+
+            var rnd = new Random();
+            for (int i = 0; i < n; i++)
+            {
+                var imageName = Images[rnd.Next(0, Images.Length)];
+                var resetEvent = new ManualResetEvent(false);
+                events.Add(resetEvent);
+                ThreadPool.QueueUserWorkItem(state =>
+                {
+                    RequestImage(imageName, out var elapsedTime);
+
+                    lock (Lock)
+                    {
+                        resetEvent.Set();
+                        records.Add(elapsedTime);
+                    }
+                });
+                if (i == 0)
+                {
+                    resetEvent.WaitOne();
+                }
+            }
+
+            foreach (var resetEvent in events)
+            {
+                resetEvent.WaitOne();
+            }
+        }
         public static bool RequestImage(string imageName, out TimeSpan elapsedTime)
         {
             var client = new HttpClient();

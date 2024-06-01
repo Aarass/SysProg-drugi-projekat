@@ -1,18 +1,22 @@
 ﻿using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.IO;
+using System.Linq;
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace ConsoleApp1
 {
-    internal class ImageCache
+    internal class ImageCache : IDisposable
     {
         private readonly Dictionary<string, LinkedListNode<ImageData>> _map;
         private readonly LinkedList<ImageData> _list;
         private readonly int _capacity;
         private readonly TimeSpan _ttl;
         private readonly object _lock;
+        private readonly int _cleanUpInterval;
+        private bool _shouldCleanUp = true;
+        private readonly Thread _cleanUpThread;
 
         public ImageCache(int capacity, TimeSpan ttl)
         {
@@ -22,14 +26,18 @@ namespace ConsoleApp1
 
             _capacity = capacity;
             _ttl = ttl;
+            _cleanUpInterval = 5000;
+
+            _cleanUpThread = new Thread(CleanUp);
+            _cleanUpThread.Start();
         }
 
-        public void AddImage(string imageName, MemoryStream data)
+        public void AddImage(string imageName, byte[] imageData)
         {
             var newData = new ImageData
             {
                 ImageName = imageName,
-                ActualData = data,
+                ActualData = imageData,
                 CreationTime = DateTime.Now
             };
 
@@ -52,42 +60,40 @@ namespace ConsoleApp1
             }
         }
 
-        public bool TryGetImage(string imageName, out MemoryStream data)
+        public bool TryGetImage(string imageName, out byte[] imageData)
         {
             LinkedListNode<ImageData> node;
             lock (_lock)
             {
                 if (!_map.TryGetValue(imageName, out node))
                 {
-                    data = null;
+                    imageData = null;
                     return false;
                 }
 
-                if ((DateTime.Now - node.Value.CreationTime) > _ttl)
-                {
-                    _map.Remove(imageName);
-                    _list.Remove(node);
-                    data = null;
-                    return false;
-                }
             }
 
-            data = node.Value.ActualData;
+            imageData = node.Value.ActualData;
             return true;
         }
 
-        public void Print()
-        {
+        public void Print(string prefix)
+        { 
             StringBuilder s = new StringBuilder();
-            s.Append("[");
-            foreach (var image in _list)
+            s.Append(prefix);
+            lock (_lock)
             {
-                s.Append(image.ImageName);
-                s.Append(" ");
+                s.Append("[");
+                foreach (var image in _list)
+                {
+                    s.Append(image.ImageName);
+                    s.Append(" ");
+                }
+                s.Append("]");
+                Console.WriteLine(s);
             }
-            s.Append("]");
-            Console.WriteLine(s);
         }
+
         public void Clear()
         {
             lock (_lock)
@@ -97,18 +103,48 @@ namespace ConsoleApp1
             }
             Console.WriteLine("Cache cleared");
         }
-    }
 
-    internal struct ImageData: IDisposable
-    {
-        public string ImageName;
-        public MemoryStream ActualData;
-        public DateTime CreationTime;
+        private void CleanUp()
+        {
+            while (_shouldCleanUp)
+            {
+                Thread.Sleep(_cleanUpInterval);
+                lock (_lock)
+                {
+                    Print("Before clean up: ");
+                    foreach (var node in _list)
+                    {
+                        if ((DateTime.Now - node.CreationTime) > _ttl)
+                        {
+                            _map.Remove(node.ImageName);
+                            _list.Remove(node);
+                        }
+                    }
+                    Print("After clean up: ");
+                }
+            }
+        }
 
         public void Dispose()
         {
-            ActualData.Close();
-            ActualData?.Dispose();
+            if (_shouldCleanUp != true) return;
+
+            Console.WriteLine("Trying to join clean-up thread...");
+            _shouldCleanUp = false;
+            _cleanUpThread.Join();
+            Console.WriteLine("Successfully joined clean-up thread!");
+        }
+    }
+
+    internal struct ImageData: IComparable<ImageData>
+    {
+        public string ImageName;
+        public byte[] ActualData;
+        public DateTime CreationTime;
+        public DateTime LastTimeUsed;
+        public int CompareTo(ImageData other)
+        {
+            return LastTimeUsed.CompareTo(other);
         }
     }
 }
